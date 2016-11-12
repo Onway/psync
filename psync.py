@@ -29,8 +29,15 @@ host = None
 def build_paths():
     cwd = os.getcwd()
     local_prefix = host["local_path"]
-    srcs = [ os.path.abspath(os.path.join(cwd, p)) for p in args ]
-    assert all(map(lambda x: x.startswith(local_prefix), srcs))
+
+    srcs = []
+    for p in args:
+        src = os.path.abspath(os.path.join(cwd, p))
+        assert src.startswith(local_prefix)
+        if src == local_prefix:
+            srcs += [ os.path.join(src, f) for f in os.listdir(src) ]
+        else:
+            srcs.append(src)
 
     remote_prefix = host["remote_path"]
     dests = {}
@@ -100,6 +107,7 @@ def do_compare():
 
 
 def do_sync():
+    print(args)
     if len(args) == 0:
         args.append(".")
 
