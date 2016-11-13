@@ -12,7 +12,7 @@ psync -c file1 [-h alias-host] // 对比文件
 import os
 import sys
 import optparse
-import importlib
+import subprocess
 
 parser = optparse.OptionParser(conflict_handler="resolve")
 parser.add_option("--generate_config", action="store_true", help="generate config")
@@ -24,6 +24,20 @@ parser.add_option("-h", "--host", default="", dest="host", help="host alias")
 
 config = {}
 host = None
+
+
+def get_host_args():
+    assert type(host) == dict
+    ssh_name = host.get("ssh_name", "")
+    if ssh_name != "":
+        return (ssh_name, [])
+
+    user = host["user"]
+    ip = host["host"]
+    port = host["port"]
+    ssh_key = host["ssh_key"]
+    return ("{}@{}".format(user, ip),
+            [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ])
 
 
 def build_paths():
@@ -51,6 +65,20 @@ def build_paths():
     print(srcs)
     print(dests)
 
+    host_args = get_host_args()
+    for key, value in dests.items():
+        pargs = [ "rsync", config.get("rsync_args", "") ]
+        pargs += host_args[1]
+        for f in value:
+            pargs.append(f)
+        pargs.append("{}:{}".format(host_args[0], key))
+        print(pargs)
+        print(subprocess.list2cmdline(pargs))
+        p = subprocess.Popen(pargs, stdout=sys.stdout, stderr=sys.stderr)
+        exit_code = p.wait()
+        if exit_code != 0:
+            sys.exit(exit_code)
+
 
 def generate_config():
     config_file = os.path.join(os.environ["HOME"], ".psync_config.py")
@@ -72,7 +100,7 @@ def generate_config():
 
 default_host = 'localhost'
 
-rsync_args = '-avC'
+rsync_args = '-avzC'
 """
 
     with open(config_file, "w") as f:
