@@ -13,6 +13,7 @@ import os
 import sys
 import optparse
 import subprocess
+import shlex
 
 parser = optparse.OptionParser(conflict_handler="resolve")
 parser.add_option("--generate_config", action="store_true", help="generate config")
@@ -40,7 +41,48 @@ def get_host_args():
             [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ])
 
 
-def build_paths():
+def do_down_rsync():
+    cwd = os.getcwd()
+    local_prefix = host["local_path"]
+
+    srcs = []
+    for p in args:
+        src = os.path.abspath(os.path.join(cwd, p))
+        assert src.startswith(local_prefix)
+        if src == local_prefix:
+            srcs += [ os.path.join(src, f) for f in os.listdir(src) ]
+        else:
+            srcs.append(src)
+
+    remote_prefix = host["remote_path"]
+    dests = {}
+    for p in srcs:
+        d = os.path.dirname(p)
+        p = p.replace(local_prefix, remote_prefix)
+        if d not in dests:
+            dests[d] = [ p ]
+        else:
+            dests[d].append(p)
+
+    print(srcs)
+    print(dests)
+
+    host_args = get_host_args()
+    for key, value in dests.items():
+        pargs = [ "rsync", config.get("rsync_args", "") ]
+        pargs += host_args[1]
+        t = "{}:{}".format(host_args[0], " ".join(value))
+        pargs.append(t)
+        pargs.append(key)
+        print(pargs)
+        print(subprocess.list2cmdline(pargs))
+        p = subprocess.Popen(pargs, stdout=sys.stdout, stderr=sys.stderr)
+        exit_code = p.wait()
+        if exit_code != 0:
+            sys.exit(exit_code)
+
+
+def do_up_rsync():
     cwd = os.getcwd()
     local_prefix = host["local_path"]
 
@@ -139,7 +181,10 @@ def do_sync():
     if len(args) == 0:
         args.append(".")
 
-    build_paths()
+    if options.down:
+        do_down_rsync()
+    else:
+        do_up_rsync()
 
 
 if __name__ == "__main__":
