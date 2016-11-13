@@ -13,7 +13,7 @@ import os
 import sys
 import optparse
 import subprocess
-import shlex
+import tempfile
 
 parser = optparse.OptionParser(conflict_handler="resolve")
 parser.add_option("--generate_config", action="store_true", help="generate config")
@@ -40,6 +40,20 @@ def get_host_args():
     return ("{}@{}".format(user, ip),
             [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ])
 
+
+def get_host_compare():
+    assert type(host) == dict
+    ssh_name = host.get("ssh_name", "")
+    if ssh_name != "":
+        return (ssh_name, [])
+
+    user = host["user"]
+    ip = host["host"]
+    port = host["port"]
+    ssh_key = host["ssh_key"]
+    return ("{}@{}".format(user, ip),
+            [ "-p", port, "-i", ssh_key ])
+    
 
 def do_down_rsync():
     cwd = os.getcwd()
@@ -143,6 +157,8 @@ def generate_config():
 default_host = 'localhost'
 
 rsync_args = '-avzC'
+
+diff_cmd = 'vimdiff'
 """
 
     with open(config_file, "w") as f:
@@ -172,8 +188,44 @@ def read_config():
 
 
 def do_compare():
-    print("do_compare")
-    pass
+    if len(args) == 0:
+        args.append(".")
+
+    assert len(args) == 1
+    cwd = os.getcwd()
+    local_prefix = host["local_path"]
+    remote_prefix = host["remote_path"]
+    p = os.path.abspath(os.path.join(cwd, args[0]))
+    assert p.startswith(local_prefix)
+    assert os.path.exists(p)
+    dest = p.replace(local_prefix, remote_prefix)
+    if os.path.isfile(p):
+        ssh_cmd = "cat %s" % dest
+    else:
+        ssh_cmd = "ls -1 %s" %dest
+
+    cmp_host = get_host_compare()
+    pargs = [ "ssh" ] + cmp_host[1]
+    pargs.append(cmp_host[0])
+    pargs.append(ssh_cmd)
+    print(subprocess.list2cmdline(pargs))
+
+    diff_cmd = config.get("diff_cmd", "diff")
+    with tempfile.NamedTemporaryFile("w+t") as f, tempfile.NamedTemporaryFile("w+t") as f2:
+        if os.path.isdir(p):
+            subp = subprocess.Popen(["ls", "-1", p], stdout=f2.file, stderr=sys.stderr)
+            subp.wait()
+            p = f2.name
+
+        subp = subprocess.Popen(pargs, stdout=f.file, stderr=sys.stderr)
+        exit_code = subp.wait()
+        if exit_code != 0:
+            sys.exit(exit_code)
+
+        diff_args = [diff_cmd, p, f.name]
+        print(subprocess.list2cmdline(diff_args))
+        subp = subprocess.Popen(diff_args, stdout=sys.stdout, stderr=sys.stderr)
+        subp.wait()
 
 
 def do_sync():
