@@ -26,34 +26,22 @@ parser.add_option("-h", "--host", default="", dest="host", help="host alias")
 config = {}
 host = None
 
-
-def get_host_args():
-    assert type(host) == dict
-    ssh_name = host.get("ssh_name", "")
+def host_cmd_args(host_config, cmd_type="rsync"):
+    ssh_name = host_config.get("ssh_name", "")
     if ssh_name != "":
         return (ssh_name, [])
 
-    user = host["user"]
-    ip = host["host"]
-    port = host["port"]
-    ssh_key = host["ssh_key"]
-    return ("{}@{}".format(user, ip),
-            [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ])
+    user = host_config["user"]
+    ip = host_config["host"]
+    port = host_config["port"]
+    ssh_key = host_config["ssh_key"]
 
-
-def get_host_compare():
-    assert type(host) == dict
-    ssh_name = host.get("ssh_name", "")
-    if ssh_name != "":
-        return (ssh_name, [])
-
-    user = host["user"]
-    ip = host["host"]
-    port = host["port"]
-    ssh_key = host["ssh_key"]
-    return ("{}@{}".format(user, ip),
-            [ "-p", port, "-i", ssh_key ])
-    
+    user_host = "{}@{}".format(user, ip)
+    if cmd_type == "ssh":
+        return (user_host, [ "-p", port, "-i", ssh_key ])
+    else:
+        return (user_host, [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ]
+        
 
 def do_down_rsync():
     cwd = os.getcwd()
@@ -81,7 +69,7 @@ def do_down_rsync():
     print(srcs)
     print(dests)
 
-    host_args = get_host_args()
+    host_args = host_cmd_args(host)
     for key, value in dests.items():
         pargs = [ "rsync", config.get("rsync_args", "") ]
         pargs += host_args[1]
@@ -121,7 +109,7 @@ def do_up_rsync():
     print(srcs)
     print(dests)
 
-    host_args = get_host_args()
+    host_args = host_cmd_args(host)
     for key, value in dests.items():
         pargs = [ "rsync", config.get("rsync_args", "") ]
         pargs += host_args[1]
@@ -136,8 +124,12 @@ def do_up_rsync():
             sys.exit(exit_code)
 
 
+def default_config_path():
+    return os.path.join(os.environ["HOME"], ".psync_config.py")
+
+
 def generate_config():
-    config_file = os.path.join(os.environ["HOME"], ".psync_config.py")
+    config_file = default_config_path()
     if os.path.isfile(config_file):
         print("%s already exist!" % config_file)
         return
@@ -167,7 +159,7 @@ diff_cmd = 'vimdiff'
 
 
 def read_config():
-    config_file = os.path.join(os.environ["HOME"], ".psync_config.py")
+    config_file = default_config_path()
     if options.cfile != "":
         config_file = options.cfile
 
@@ -204,7 +196,7 @@ def do_compare():
     else:
         ssh_cmd = "ls -1 %s" %dest
 
-    cmp_host = get_host_compare()
+    cmp_host = host_cmd_args(host, cmd_type="ssh")
     pargs = [ "ssh" ] + cmp_host[1]
     pargs.append(cmp_host[0])
     pargs.append(ssh_cmd)
