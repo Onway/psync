@@ -26,7 +26,7 @@ parser.add_option("-h", "--host", default="", dest="host", help="host alias")
 config = {}
 host = None
 
-def host_cmd_args(host_config, cmd_type="rsync"):
+def make_host_args(host_config, cmd_type="rsync"):
     ssh_name = host_config.get("ssh_name", "")
     if ssh_name != "":
         return (ssh_name, [])
@@ -43,85 +43,86 @@ def host_cmd_args(host_config, cmd_type="rsync"):
         return (user_host, [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ]
         
 
-def do_down_rsync():
+def join_local_paths(local_dir, files):
     cwd = os.getcwd()
-    local_prefix = host["local_path"]
+    dir_ = os.path.abspath(local_dir)
 
-    srcs = []
-    for p in args:
-        src = os.path.abspath(os.path.join(cwd, p))
-        assert src.startswith(local_prefix)
-        if src == local_prefix:
-            srcs += [ os.path.join(src, f) for f in os.listdir(src) ]
+    paths = []
+    for f in files:
+        fpath = os.path.abspath(os.path.join(cwd, f))
+        assert fpath.startswith(dir_)
+        if fpath == dir_:
+            paths += [ os.path.join(dir_, item) for item in os.listdir(dir_) ]
         else:
-            srcs.append(src)
+            paths.append(fpath)
 
-    remote_prefix = host["remote_path"]
-    dests = {}
-    for p in srcs:
-        d = os.path.dirname(p)
-        p = p.replace(local_prefix, remote_prefix)
-        if d not in dests:
-            dests[d] = [ p ]
+    return paths
+
+
+def group_dir_files(local_paths, local_dir, remote_dir, is_up=True):
+    ldir = os.path.abspath(local_dir)
+    rdir = os.path.abspath(remote_dir)
+
+    dest_src_dict = {}
+    for lpath in local_paths:
+        rpath = lpath.replace(ldir, rdir)
+
+        if is_up:
+            dest = os.path.dirname(rpath)
+            src = lpath
         else:
-            dests[d].append(p)
+            dest = os.path.dirname(lpath)
+            src = rpath
 
-    print(srcs)
-    print(dests)
-
-    host_args = host_cmd_args(host)
-    for key, value in dests.items():
-        pargs = [ "rsync", config.get("rsync_args", "") ]
-        pargs += host_args[1]
-        t = "{}:{}".format(host_args[0], " ".join(value))
-        pargs.append(t)
-        pargs.append(key)
-        print(pargs)
-        print(subprocess.list2cmdline(pargs))
-        p = subprocess.Popen(pargs, stdout=sys.stdout, stderr=sys.stderr)
-        exit_code = p.wait()
-        if exit_code != 0:
-            sys.exit(exit_code)
-
-
-def do_up_rsync():
-    cwd = os.getcwd()
-    local_prefix = host["local_path"]
-
-    srcs = []
-    for p in args:
-        src = os.path.abspath(os.path.join(cwd, p))
-        assert src.startswith(local_prefix)
-        if src == local_prefix:
-            srcs += [ os.path.join(src, f) for f in os.listdir(src) ]
+        if dest not in dest_src_dict:
+            dest_src_dict[dest] = [ src ]
         else:
-            srcs.append(src)
+            dest_src_dict[dest].append(src)
 
-    remote_prefix = host["remote_path"]
-    dests = {}
-    for p in srcs:
-        d = os.path.dirname(p.replace(local_prefix, remote_prefix))
-        if d not in dests:
-            dests[d] = [ p ]
-        else:
-            dests[d].append(p)
+    print(dest_src_dict)
+    return dest_src_dict
 
-    print(srcs)
-    print(dests)
 
-    host_args = host_cmd_args(host)
-    for key, value in dests.items():
-        pargs = [ "rsync", config.get("rsync_args", "") ]
-        pargs += host_args[1]
-        for f in value:
-            pargs.append(f)
-        pargs.append("{}:{}".format(host_args[0], key))
-        print(pargs)
-        print(subprocess.list2cmdline(pargs))
-        p = subprocess.Popen(pargs, stdout=sys.stdout, stderr=sys.stderr)
-        exit_code = p.wait()
-        if exit_code != 0:
-            sys.exit(exit_code)
+def run_rsync_cmd(cmd_args):
+    print(cmd_args)
+    print(subprocess.list2cmdline(cmd_args))
+    p = subprocess.Popen(pargs, stdout=sys.stdout, stderr=sys.stderr)
+    exit_code = p.wait()
+    if exit_code != 0:
+        sys.exit(exit_code)
+
+
+def do_up_rsync(config, host, files):
+    local_dir = host["local_path"]
+    remote_dir = host["remote_path"]
+    local_paths = join_local_paths(local_dir, files)
+    dest_src_dict = group_dir_files(local_paths, local_dir, remote_dir, True)
+
+    host_name, host_args = make_host_args(host)
+    for dir_, files in dest_src_dict.items():
+        cmd_args = [ "rsync", config.get("rsync_args", "") ]
+        cmd_args += host_args
+        for f in files:
+            cmd_args.append(f)
+        cmd_args.append("{}:{}".format(host_name, dir_))
+
+        run_rsync_cmd(cmd_args)
+
+
+def do_down_rsync(config, host, files):
+    local_dir = host["local_path"]
+    remote_dir = host["remote_path"]
+    local_paths = join_local_paths(local_dir, files)
+    dest_src_dict = group_dir_files(local_paths, local_dir, remote_dir, False)
+
+    host_name, host_args = make_host_args(host)
+    for dir_, files in dest_src_dict.items():
+        cmd_args = [ "rsync", config.get("rsync_args", "") ]
+        cmd_args += host_args
+        cmd_args.append("{}:{}".format(host_args[0], " ".join(files)))
+        cmd_args.append(dir_)
+
+        run_rsync_cmd(cmd_args)
 
 
 def default_config_path():
@@ -196,7 +197,7 @@ def do_compare():
     else:
         ssh_cmd = "ls -1 %s" %dest
 
-    cmp_host = host_cmd_args(host, cmd_type="ssh")
+    cmp_host = make_host_args(host, cmd_type="ssh")
     pargs = [ "ssh" ] + cmp_host[1]
     pargs.append(cmp_host[0])
     pargs.append(ssh_cmd)
