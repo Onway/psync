@@ -15,17 +15,6 @@ import optparse
 import subprocess
 import tempfile
 
-parser = optparse.OptionParser(conflict_handler="resolve")
-parser.add_option("--generate_config", action="store_true", help="generate config")
-parser.add_option("-f", "--file", default="", dest="cfile", help="config file path")
-parser.add_option("-c", "--cmp", action="store_true", dest="cmp", help="compare file")
-parser.add_option("-d", "--down", action="store_true", dest="down", help="download files")
-parser.add_option("-h", "--host", default="", dest="host", help="host alias")
-(options, args) = parser.parse_args()
-
-config = {}
-host = None
-
 def make_host_args(host_config, cmd_type="rsync"):
     ssh_name = host_config.get("ssh_name", "")
     if ssh_name != "":
@@ -83,10 +72,10 @@ def group_dir_files(local_paths, local_dir, remote_dir, is_up=True):
     return dest_src_dict
 
 
-def run_rsync_cmd(cmd_args):
+def run_shell_cmd(cmd_args, stdout=sys.stdout, stderr=sys.stderr):
     print(cmd_args)
     print(subprocess.list2cmdline(cmd_args))
-    p = subprocess.Popen(pargs, stdout=sys.stdout, stderr=sys.stderr)
+    p = subprocess.Popen(cmd_args, stdout=stdout, stderr=stderr)
     exit_code = p.wait()
     if exit_code != 0:
         sys.exit(exit_code)
@@ -106,7 +95,7 @@ def do_up_rsync(config, host, files):
             cmd_args.append(f)
         cmd_args.append("{}:{}".format(host_name, dir_))
 
-        run_rsync_cmd(cmd_args)
+        run_shell_cmd(cmd_args)
 
 
 def do_down_rsync(config, host, files):
@@ -122,18 +111,17 @@ def do_down_rsync(config, host, files):
         cmd_args.append("{}:{}".format(host_args[0], " ".join(files)))
         cmd_args.append(dir_)
 
-        run_rsync_cmd(cmd_args)
+        run_shell_cmd(cmd_args)
 
 
 def default_config_path():
     return os.path.join(os.environ["HOME"], ".psync_config.py")
 
 
-def generate_config():
-    config_file = default_config_path()
+def generate_config(file_path):
+    config_file = file_path if file_path else default_config_path()
     if os.path.isfile(config_file):
         print("%s already exist!" % config_file)
-        return
 
     txt = """hosts = {
     'localhost': {
@@ -159,36 +147,26 @@ diff_cmd = 'vimdiff'
     print("%s generated!" % config_file)
 
 
-def read_config():
-    config_file = default_config_path()
-    if options.cfile != "":
-        config_file = options.cfile
+def read_config(file_path, host_name):
+    config_file = file_path if file_path else default_config_path()
 
     local = {}
     with open(config_file) as f:
         exec(f.read(), {}, local)
     
-    host_key = local["default_host"]
-    if len(options.host) > 0 :
-        host_key = options.host
-
-    global host
-    global config
-    config = local
-    host = config["hosts"][host_key]
-    assert host.get("local_path", "") != ""
-    assert host.get("remote_path", "") != ""
+    host_key = host_name if host_name else local["default_host"]
+    return local, local["hosts"][host_key]
 
 
-def do_compare():
-    if len(args) == 0:
-        args.append(".")
+def do_compare(config, host, files):
+    if len(files) == 0:
+        files.append(".")
 
-    assert len(args) == 1
+    assert len(files) == 1
     cwd = os.getcwd()
     local_prefix = host["local_path"]
     remote_prefix = host["remote_path"]
-    p = os.path.abspath(os.path.join(cwd, args[0]))
+    p = os.path.abspath(os.path.join(cwd, files[0]))
     assert p.startswith(local_prefix)
     assert os.path.exists(p)
     dest = p.replace(local_prefix, remote_prefix)
@@ -197,50 +175,52 @@ def do_compare():
     else:
         ssh_cmd = "ls -1 %s" %dest
 
-    cmp_host = make_host_args(host, cmd_type="ssh")
-    pargs = [ "ssh" ] + cmp_host[1]
-    pargs.append(cmp_host[0])
+    host_name, host_args = make_host_args(host, cmd_type="ssh")
+    pargs = [ "ssh" ] + host_args
+    pargs.append(host_name)
     pargs.append(ssh_cmd)
     print(subprocess.list2cmdline(pargs))
 
     diff_cmd = config.get("diff_cmd", "diff")
     with tempfile.NamedTemporaryFile("w+t") as f, tempfile.NamedTemporaryFile("w+t") as f2:
         if os.path.isdir(p):
-            subp = subprocess.Popen(["ls", "-1", p], stdout=f2.file, stderr=sys.stderr)
-            subp.wait()
+            run_shell_cmd(["ls", "-1", p], stdout=f2.file)
             p = f2.name
 
-        subp = subprocess.Popen(pargs, stdout=f.file, stderr=sys.stderr)
-        exit_code = subp.wait()
-        if exit_code != 0:
-            sys.exit(exit_code)
+        run_shell_cmd(pargs, stdout=f.file)
 
         diff_args = [diff_cmd, p, f.name]
-        print(subprocess.list2cmdline(diff_args))
-        subp = subprocess.Popen(diff_args, stdout=sys.stdout, stderr=sys.stderr)
-        subp.wait()
+        run_shell_cmd(diff_args)
 
 
-def do_sync():
-    print(args)
-    if len(args) == 0:
-        args.append(".")
+def do_sync(config, host, files, is_up=True):
+    print(files)
+    if len(files) == 0:
+        files.append(".")
 
-    if options.down:
-        do_down_rsync()
+    if is_up:
+        do_up_rsync(config, host, files)
     else:
-        do_up_rsync()
+        do_down_rsync(config, host, files)
 
 
 if __name__ == "__main__":
+    parser = optparse.OptionParser(conflict_handler="resolve")
+    parser.add_option("--generate_config", action="store_true", help="generate config")
+    parser.add_option("-f", "--file", default="", dest="cfile", help="config file path")
+    parser.add_option("-c", "--cmp", action="store_true", dest="cmp", help="compare file")
+    parser.add_option("-d", "--down", action="store_true", dest="down", help="download files")
+    parser.add_option("-h", "--host", default="", dest="host", help="host alias")
+    options, args = parser.parse_args()
+
     if options.generate_config:
-        generate_config()
+        generate_config(options.cfile)
         sys.exit(0)
-    read_config()
+    config, host = read_config(options.cfile, options.host)
 
     if options.cmp:
-        do_compare()
-        sys.exit(0)
+        do_compare(config, host, args)
+    else:
+        do_sync(config, host, args, not options.down)
 
-    do_sync()
     sys.exit(0)
