@@ -19,7 +19,9 @@ import logging
 def make_host_args(host_config, cmd_type="rsync"):
     ssh_name = host_config.get("ssh_name", "")
     if ssh_name != "":
-        return (ssh_name, [])
+        args = (ssh_name, [])
+        logging.debug(args)
+        return args
 
     user = host_config["user"]
     ip = host_config["host"]
@@ -28,9 +30,12 @@ def make_host_args(host_config, cmd_type="rsync"):
 
     user_host = "{}@{}".format(user, ip)
     if cmd_type == "ssh":
-        return (user_host, [ "-p", port, "-i", ssh_key ])
+        args = (user_host, [ "-p", port, "-i", ssh_key ])
     else:
-        return (user_host, [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ])
+        args = (user_host, [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ])
+
+    logging.debug(args)
+    return args
         
 
 def join_local_paths(local_dir, files):
@@ -46,6 +51,7 @@ def join_local_paths(local_dir, files):
         else:
             paths.append(fpath)
 
+    logging.debug(paths)
     return paths
 
 
@@ -69,13 +75,17 @@ def group_dir_files(local_paths, local_dir, remote_dir, is_up=True):
         else:
             dest_src_dict[dest].append(src)
 
-    print(dest_src_dict)
+    logging.debug(dest_src_dict)
     return dest_src_dict
 
 
 def run_shell_cmd(cmd_args, stdout=sys.stdout, stderr=sys.stderr):
-    print(cmd_args)
+    logging.debug(cmd_args)
     print(subprocess.list2cmdline(cmd_args))
+
+    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+        return
+
     p = subprocess.Popen(cmd_args, stdout=stdout, stderr=stderr)
     exit_code = p.wait()
     if exit_code != 0:
@@ -109,7 +119,7 @@ def do_down_rsync(config, host, files):
     for dir_, files in dest_src_dict.items():
         cmd_args = [ "rsync", config.get("rsync_args", "") ]
         cmd_args += host_args
-        cmd_args.append("{}:{}".format(host_args[0], " ".join(files)))
+        cmd_args.append("{}:{}".format(host_name, " ".join(files)))
         cmd_args.append(dir_)
 
         run_shell_cmd(cmd_args)
@@ -155,10 +165,12 @@ diff_cmd = 'vimdiff'
 
 def read_config(file_path, host_name):
     config_file = file_path if file_path else default_config_path()
+    logging.debug(config_file)
 
     local = {}
     with open(config_file) as f:
         exec(f.read(), {}, local)
+    logging.debug(local)
     
     host_key = host_name if host_name else local["default_host"]
     return local, local["hosts"][host_key]
@@ -200,9 +212,9 @@ def do_compare(config, host, files):
 
 
 def do_sync(config, host, files, is_up=True):
-    print(files)
     if len(files) == 0:
         files.append(".")
+    logging.debug(files)
 
     if is_up:
         do_up_rsync(config, host, files)
@@ -221,7 +233,7 @@ if __name__ == "__main__":
     options, args = parser.parse_args()
 
     if options.debug:
-        logging.basicConfig(level=logging.DEBUG, format="%(message)s")
+        logging.basicConfig(level=logging.DEBUG, format="%(funcName)s: %(message)s")
 
     if options.generate_config:
         generate_config(options.cfile)
