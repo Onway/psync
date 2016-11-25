@@ -14,6 +14,7 @@ import sys
 import optparse
 import subprocess
 import tempfile
+import logging
 
 def make_host_args(host_config, cmd_type="rsync"):
     ssh_name = host_config.get("ssh_name", "")
@@ -29,7 +30,7 @@ def make_host_args(host_config, cmd_type="rsync"):
     if cmd_type == "ssh":
         return (user_host, [ "-p", port, "-i", ssh_key ])
     else:
-        return (user_host, [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ]
+        return (user_host, [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ])
         
 
 def join_local_paths(local_dir, files):
@@ -122,6 +123,7 @@ def generate_config(file_path):
     config_file = file_path if file_path else default_config_path()
     if os.path.isfile(config_file):
         print("%s already exist!" % config_file)
+        return
 
     txt = """hosts = {
     'localhost': {
@@ -141,6 +143,10 @@ rsync_args = '-avzC'
 
 diff_cmd = 'vimdiff'
 """
+
+    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+        logging.debug(txt)
+        return
 
     with open(config_file, "w") as f:
         f.write(txt)
@@ -207,11 +213,15 @@ def do_sync(config, host, files, is_up=True):
 if __name__ == "__main__":
     parser = optparse.OptionParser(conflict_handler="resolve")
     parser.add_option("--generate_config", action="store_true", help="generate config")
+    parser.add_option("--debug", action="store_true", help="debug")
     parser.add_option("-f", "--file", default="", dest="cfile", help="config file path")
     parser.add_option("-c", "--cmp", action="store_true", dest="cmp", help="compare file")
     parser.add_option("-d", "--down", action="store_true", dest="down", help="download files")
     parser.add_option("-h", "--host", default="", dest="host", help="host alias")
     options, args = parser.parse_args()
+
+    if options.debug:
+        logging.basicConfig(level=logging.DEBUG, format="%(message)s")
 
     if options.generate_config:
         generate_config(options.cfile)
