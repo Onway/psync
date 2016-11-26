@@ -30,7 +30,7 @@ def make_host_args(host_config, cmd_type="rsync"):
 
     user_host = "{}@{}".format(user, ip)
     if cmd_type == "ssh":
-        args = (user_host, [ "-p", port, "-i", ssh_key ])
+        args = (user_host, [ "-p", str(port), "-i", ssh_key ])
     else:
         args = (user_host, [ "-e", "ssh -p %d -i %s" % (port, ssh_key) ])
 
@@ -38,7 +38,7 @@ def make_host_args(host_config, cmd_type="rsync"):
     return args
         
 
-def join_local_paths(local_dir, files):
+def join_local_paths(local_dir, files, extend_root=True):
     cwd = os.getcwd()
     dir_ = os.path.abspath(local_dir)
 
@@ -46,7 +46,7 @@ def join_local_paths(local_dir, files):
     for f in files:
         fpath = os.path.abspath(os.path.join(cwd, f))
         assert fpath.startswith(dir_)
-        if fpath == dir_:
+        if fpath == dir_ and extend_root:
             paths += [ os.path.join(dir_, item) for item in os.listdir(dir_) ]
         else:
             paths.append(fpath)
@@ -179,36 +179,41 @@ def read_config(file_path, host_name):
 def do_compare(config, host, files):
     if len(files) == 0:
         files.append(".")
-
     assert len(files) == 1
-    cwd = os.getcwd()
-    local_prefix = host["local_path"]
-    remote_prefix = host["remote_path"]
-    p = os.path.abspath(os.path.join(cwd, files[0]))
-    assert p.startswith(local_prefix)
-    assert os.path.exists(p)
-    dest = p.replace(local_prefix, remote_prefix)
-    if os.path.isfile(p):
-        ssh_cmd = "cat %s" % dest
+    logging.debug(files)
+
+    local_dir = host["local_path"]
+    remote_dir = host["remote_path"]
+    local_file = join_local_paths(local_dir, files, False)[0]
+    remote_file = local_file.replace(local_dir, remote_dir)
+    assert os.path.exists(local_file)
+
+    if os.path.isfile(local_file):
+        ssh_cmd = "cat %s" % remote_file
     else:
-        ssh_cmd = "ls -1 %s" %dest
+        ssh_cmd = "ls -1 %s" % remote_file
 
     host_name, host_args = make_host_args(host, cmd_type="ssh")
-    pargs = [ "ssh" ] + host_args
-    pargs.append(host_name)
-    pargs.append(ssh_cmd)
-    print(subprocess.list2cmdline(pargs))
+    cmd_args = [ "ssh" ] + host_args
+    cmd_args.append(host_name)
+    cmd_args.append(ssh_cmd)
 
-    diff_cmd = config.get("diff_cmd", "diff")
-    with tempfile.NamedTemporaryFile("w+t") as f, tempfile.NamedTemporaryFile("w+t") as f2:
-        if os.path.isdir(p):
-            run_shell_cmd(["ls", "-1", p], stdout=f2.file)
-            p = f2.name
+    remote_output = tempfile.NamedTemporaryFile("w+t")
+    run_shell_cmd(cmd_args, stdout=remote_output)
 
-        run_shell_cmd(pargs, stdout=f.file)
+    local_output = None
+    if os.path.isdir(local_file):
+        local_output = tempfile.NamedTemporaryFile("w+t")
+        run_shell_cmd(["ls", "-1", local_file], stdout=local_output.file)
+        local_file = local_output.name
 
-        diff_args = [diff_cmd, p, f.name]
-        run_shell_cmd(diff_args)
+    diff_cmd = config.get("diff_cmd", "diff").split()
+    diff_args = diff_cmd + [local_file, remote_output.name]
+    run_shell_cmd(diff_args)
+
+    if local_output:
+        local_output.close()
+    remote_output.close()
 
 
 def do_sync(config, host, files, is_up=True):
