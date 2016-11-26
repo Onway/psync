@@ -1,20 +1,147 @@
 #!/usr/bin/env python3
 
-""" usage
-
-psync --generate_config
-psync [-d] [-h alias-host ] // 当前工作目录上传到默认机器
-psync [-d] [file1, file2, … fileN] [-h alias-host] // 指定文件上传到默认机器
-psync -c file1 [-h alias-host] // 对比文件
-
-"""
-
 import os
 import sys
 import optparse
 import subprocess
 import tempfile
 import logging
+
+
+def do_sync(config, host, files, is_up=True):
+    if len(files) == 0:
+        files.append(".")
+    logging.debug(files)
+
+    if is_up:
+        do_up_rsync(config, host, files)
+    else:
+        do_down_rsync(config, host, files)
+
+
+def do_up_rsync(config, host, files):
+    local_dir = host["local_path"]
+    remote_dir = host["remote_path"]
+    local_paths = join_local_paths(local_dir, files)
+    dest_src_dict = group_dir_files(local_paths, local_dir, remote_dir, True)
+
+    host_name, host_args = make_host_args(host)
+    for dir_, files in dest_src_dict.items():
+        cmd_args = [ "rsync", config.get("rsync_args", "") ]
+        cmd_args += host_args
+        for f in files:
+            cmd_args.append(f)
+        cmd_args.append("{}:{}".format(host_name, dir_))
+
+        run_shell_cmd(cmd_args)
+
+
+def do_down_rsync(config, host, files):
+    local_dir = host["local_path"]
+    remote_dir = host["remote_path"]
+    local_paths = join_local_paths(local_dir, files)
+    dest_src_dict = group_dir_files(local_paths, local_dir, remote_dir, False)
+
+    host_name, host_args = make_host_args(host)
+    for dir_, files in dest_src_dict.items():
+        cmd_args = [ "rsync", config.get("rsync_args", "") ]
+        cmd_args += host_args
+        cmd_args.append("{}:{}".format(host_name, " ".join(files)))
+        cmd_args.append(dir_)
+
+        run_shell_cmd(cmd_args)
+
+
+def do_compare(config, host, files):
+    if len(files) == 0:
+        files.append(".")
+    assert len(files) == 1
+    logging.debug(files)
+
+    local_dir = host["local_path"]
+    remote_dir = host["remote_path"]
+    local_file = join_local_paths(local_dir, files, False)[0]
+    remote_file = local_file.replace(local_dir, remote_dir)
+    assert os.path.exists(local_file)
+
+    if os.path.isfile(local_file):
+        ssh_cmd = "cat %s" % remote_file
+    else:
+        ssh_cmd = "ls -1 %s" % remote_file
+
+    host_name, host_args = make_host_args(host, cmd_type="ssh")
+    cmd_args = [ "ssh" ] + host_args
+    cmd_args.append(host_name)
+    cmd_args.append(ssh_cmd)
+
+    remote_output = tempfile.NamedTemporaryFile("w+t")
+    run_shell_cmd(cmd_args, stdout=remote_output)
+
+    local_output = None
+    if os.path.isdir(local_file):
+        local_output = tempfile.NamedTemporaryFile("w+t")
+        run_shell_cmd(["ls", "-1", local_file], stdout=local_output.file)
+        local_file = local_output.name
+
+    diff_cmd = config.get("diff_cmd", "diff").split()
+    diff_args = diff_cmd + [local_file, remote_output.name]
+    run_shell_cmd(diff_args)
+
+    if local_output:
+        local_output.close()
+    remote_output.close()
+
+
+def generate_config(file_path):
+    config_file = file_path if file_path else default_config_path()
+    if os.path.isfile(config_file):
+        print("%s already exist!" % config_file)
+        return
+
+    txt = """hosts = {
+    'localhost': {
+        'ssh_name': 'localhost',
+        'host': '',
+        'port': 0,
+        'user': '',
+        'ssh_key': '',
+        'remote_path': '',
+        'local_path': '',
+    },
+}
+
+default_host = 'localhost'
+
+rsync_args = '-avzC'
+
+diff_cmd = 'vimdiff'
+"""
+
+    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+        logging.debug(txt)
+        return
+
+    with open(config_file, "w") as f:
+        f.write(txt)
+    print("%s generated!" % config_file)
+
+
+def read_config(file_path, host_name):
+    config_file = file_path if file_path else default_config_path()
+    logging.debug(config_file)
+
+    local = {}
+    with open(config_file) as f:
+        exec(f.read(), {}, local)
+    logging.debug(local)
+    
+    host_key = host_name if host_name else local["default_host"]
+    return local, local["hosts"][host_key]
+
+
+def default_config_path():
+    return os.path.join(os.environ["HOME"], ".psync_config.py")
+
 
 def make_host_args(host_config, cmd_type="rsync"):
     ssh_name = host_config.get("ssh_name", "")
@@ -90,141 +217,6 @@ def run_shell_cmd(cmd_args, stdout=sys.stdout, stderr=sys.stderr):
     exit_code = p.wait()
     if exit_code != 0:
         sys.exit(exit_code)
-
-
-def do_up_rsync(config, host, files):
-    local_dir = host["local_path"]
-    remote_dir = host["remote_path"]
-    local_paths = join_local_paths(local_dir, files)
-    dest_src_dict = group_dir_files(local_paths, local_dir, remote_dir, True)
-
-    host_name, host_args = make_host_args(host)
-    for dir_, files in dest_src_dict.items():
-        cmd_args = [ "rsync", config.get("rsync_args", "") ]
-        cmd_args += host_args
-        for f in files:
-            cmd_args.append(f)
-        cmd_args.append("{}:{}".format(host_name, dir_))
-
-        run_shell_cmd(cmd_args)
-
-
-def do_down_rsync(config, host, files):
-    local_dir = host["local_path"]
-    remote_dir = host["remote_path"]
-    local_paths = join_local_paths(local_dir, files)
-    dest_src_dict = group_dir_files(local_paths, local_dir, remote_dir, False)
-
-    host_name, host_args = make_host_args(host)
-    for dir_, files in dest_src_dict.items():
-        cmd_args = [ "rsync", config.get("rsync_args", "") ]
-        cmd_args += host_args
-        cmd_args.append("{}:{}".format(host_name, " ".join(files)))
-        cmd_args.append(dir_)
-
-        run_shell_cmd(cmd_args)
-
-
-def default_config_path():
-    return os.path.join(os.environ["HOME"], ".psync_config.py")
-
-
-def generate_config(file_path):
-    config_file = file_path if file_path else default_config_path()
-    if os.path.isfile(config_file):
-        print("%s already exist!" % config_file)
-        return
-
-    txt = """hosts = {
-    'localhost': {
-        'ssh_name': 'localhost',
-        'host': '',
-        'port': 0,
-        'user': '',
-        'ssh_key': '',
-        'remote_path': '',
-        'local_path': '',
-    },
-}
-
-default_host = 'localhost'
-
-rsync_args = '-avzC'
-
-diff_cmd = 'vimdiff'
-"""
-
-    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
-        logging.debug(txt)
-        return
-
-    with open(config_file, "w") as f:
-        f.write(txt)
-    print("%s generated!" % config_file)
-
-
-def read_config(file_path, host_name):
-    config_file = file_path if file_path else default_config_path()
-    logging.debug(config_file)
-
-    local = {}
-    with open(config_file) as f:
-        exec(f.read(), {}, local)
-    logging.debug(local)
-    
-    host_key = host_name if host_name else local["default_host"]
-    return local, local["hosts"][host_key]
-
-
-def do_compare(config, host, files):
-    if len(files) == 0:
-        files.append(".")
-    assert len(files) == 1
-    logging.debug(files)
-
-    local_dir = host["local_path"]
-    remote_dir = host["remote_path"]
-    local_file = join_local_paths(local_dir, files, False)[0]
-    remote_file = local_file.replace(local_dir, remote_dir)
-    assert os.path.exists(local_file)
-
-    if os.path.isfile(local_file):
-        ssh_cmd = "cat %s" % remote_file
-    else:
-        ssh_cmd = "ls -1 %s" % remote_file
-
-    host_name, host_args = make_host_args(host, cmd_type="ssh")
-    cmd_args = [ "ssh" ] + host_args
-    cmd_args.append(host_name)
-    cmd_args.append(ssh_cmd)
-
-    remote_output = tempfile.NamedTemporaryFile("w+t")
-    run_shell_cmd(cmd_args, stdout=remote_output)
-
-    local_output = None
-    if os.path.isdir(local_file):
-        local_output = tempfile.NamedTemporaryFile("w+t")
-        run_shell_cmd(["ls", "-1", local_file], stdout=local_output.file)
-        local_file = local_output.name
-
-    diff_cmd = config.get("diff_cmd", "diff").split()
-    diff_args = diff_cmd + [local_file, remote_output.name]
-    run_shell_cmd(diff_args)
-
-    if local_output:
-        local_output.close()
-    remote_output.close()
-
-
-def do_sync(config, host, files, is_up=True):
-    if len(files) == 0:
-        files.append(".")
-    logging.debug(files)
-
-    if is_up:
-        do_up_rsync(config, host, files)
-    else:
-        do_down_rsync(config, host, files)
 
 
 if __name__ == "__main__":
