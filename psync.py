@@ -22,8 +22,7 @@ def do_sync(config, host, files, is_up=True):
 
 
 def do_up_sync(config, host, files):
-    local_dir = host["local_path"]
-    remote_dir = host["remote_path"]
+    local_dir, remote_dir = get_config_dirs(host)
     local_paths = join_local_paths(local_dir, files)
     dest_src_dict = group_dir_files(local_paths, local_dir, remote_dir, True)
 
@@ -39,8 +38,7 @@ def do_up_sync(config, host, files):
 
 
 def do_down_sync(config, host, files):
-    local_dir = host["local_path"]
-    remote_dir = host["remote_path"]
+    local_dir, remote_dir = get_config_dirs(host)
     local_paths = join_local_paths(local_dir, files)
     dest_src_dict = group_dir_files(local_paths, local_dir, remote_dir, False)
 
@@ -60,8 +58,7 @@ def do_compare(config, host, files):
     assert len(files) == 1
     logging.debug(files)
 
-    local_dir = host["local_path"]
-    remote_dir = host["remote_path"]
+    local_dir, remote_dir = get_config_dirs(host)
     local_file = join_local_paths(local_dir, files, False)[0]
     remote_file = local_file.replace(local_dir, remote_dir)
     assert os.path.exists(local_file)
@@ -107,8 +104,12 @@ def generate_config(file_path):
         'port': 0,
         'user': '',
         'ssh_key': '',
-        'remote_path': '',
-        'local_path': '',
+        'paths': [
+            {
+                'local_dir': '',
+                'remote_dir': ''
+            }
+        ],
     },
 }
 
@@ -143,6 +144,16 @@ def read_config(file_path, host_name):
 
 def default_config_path():
     return os.path.join(os.environ["HOME"], ".psync_config.py")
+
+
+def get_config_dirs(host):
+    cwd = os.getcwd()
+    logging.debug(cwd)
+    for dirs in host["paths"]:
+        local_dir = os.path.abspath(dirs['local_dir'])
+        remote_dir = os.path.abspath(dirs['remote_dir'])
+        if cwd.startswith(local_dir):
+            return local_dir, remote_dir
 
 
 def make_host_args(host_config, cmd_type="rsync"):
