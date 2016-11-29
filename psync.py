@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+"""A script based on rsync for synchronizing files"""
+
 import os
 import sys
 import optparse
@@ -14,12 +16,12 @@ def do_sync(config, host, files, is_up=True):
     logging.debug(files)
 
     if is_up:
-        do_up_rsync(config, host, files)
+        do_up_sync(config, host, files)
     else:
-        do_down_rsync(config, host, files)
+        do_down_sync(config, host, files)
 
 
-def do_up_rsync(config, host, files):
+def do_up_sync(config, host, files):
     local_dir = host["local_path"]
     remote_dir = host["remote_path"]
     local_paths = join_local_paths(local_dir, files)
@@ -36,7 +38,7 @@ def do_up_rsync(config, host, files):
         run_shell_cmd(cmd_args)
 
 
-def do_down_rsync(config, host, files):
+def do_down_sync(config, host, files):
     local_dir = host["local_path"]
     remote_dir = host["remote_path"]
     local_paths = join_local_paths(local_dir, files)
@@ -230,7 +232,8 @@ if __name__ == "__main__":
     options, args = parser.parse_args()
 
     if options.debug:
-        logging.basicConfig(level=logging.DEBUG, format="%(funcName)s: %(message)s")
+        logging.basicConfig(level=logging.DEBUG,
+                            format="%(funcName)s: %(message)s")
 
     if options.generate_config:
         generate_config(options.cfile)
