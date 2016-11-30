@@ -10,15 +10,16 @@ import tempfile
 import logging
 
 
-def do_sync(config, host, files, is_up=True):
+def do_sync(config, hosts, files, is_up=True):
     if len(files) == 0:
         files.append(".")
     logging.debug(files)
 
     if is_up:
-        do_up_sync(config, host, files)
+        for host in hosts:
+            do_up_sync(config, host, files)
     else:
-        do_down_sync(config, host, files)
+        do_down_sync(config, hosts[0], files)
 
 
 def do_up_sync(config, host, files):
@@ -129,7 +130,7 @@ diff_cmd = 'vimdiff'
     print("%s generated!" % config_file)
 
 
-def read_config(file_path, host_name):
+def read_config(file_path, host_names):
     config_file = file_path if file_path else default_config_path()
     logging.debug(config_file)
 
@@ -138,8 +139,12 @@ def read_config(file_path, host_name):
         exec(f.read(), {}, local)
     logging.debug(local)
     
-    host_key = host_name if host_name else local["default_host"]
-    return local, local["hosts"][host_key]
+    if not host_names:
+        host_names.append(local["default_host"])
+
+    hosts = [ local["hosts"][name] for name in host_names ]
+    logging.debug(hosts)
+    return local, hosts
 
 
 def default_config_path():
@@ -239,7 +244,7 @@ if __name__ == "__main__":
     parser.add_option("-f", "--file", default="", dest="cfile", help="config file path")
     parser.add_option("-c", "--cmp", action="store_true", dest="cmp", help="compare file")
     parser.add_option("-d", "--down", action="store_true", dest="down", help="download files")
-    parser.add_option("-h", "--host", default="", dest="host", help="host alias")
+    parser.add_option("-h", "--host", default=[], dest="host", action="append", help="host alias")
     options, args = parser.parse_args()
 
     if options.debug:
@@ -249,11 +254,14 @@ if __name__ == "__main__":
     if options.generate_config:
         generate_config(options.cfile)
         sys.exit(0)
-    config, host = read_config(options.cfile, options.host)
+
+    config, hosts = read_config(options.cfile, options.host)
+    if options.cmp or options.down:
+        assert len(hosts) == 1
 
     if options.cmp:
-        do_compare(config, host, args)
+        do_compare(config, host[0], args)
     else:
-        do_sync(config, host, args, not options.down)
+        do_sync(config, hosts, args, not options.down)
 
     sys.exit(0)
