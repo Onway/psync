@@ -4,7 +4,7 @@
 
 import os
 import sys
-import optparse
+import argparse
 import subprocess
 import tempfile
 import logging
@@ -238,30 +238,31 @@ def run_shell_cmd(cmd_args, stdout=sys.stdout, stderr=sys.stderr):
 
 
 if __name__ == "__main__":
-    parser = optparse.OptionParser(conflict_handler="resolve")
-    parser.add_option("--generate_config", action="store_true", help="generate config")
-    parser.add_option("--debug", action="store_true", help="debug")
-    parser.add_option("-f", "--file", default="", dest="cfile", help="config file path")
-    parser.add_option("-c", "--cmp", action="store_true", dest="cmp", help="compare file")
-    parser.add_option("-d", "--down", action="store_true", dest="down", help="download files")
-    parser.add_option("-h", "--host", default=[], dest="host", action="append", help="host alias")
-    options, args = parser.parse_args()
+    parser = argparse.ArgumentParser(conflict_handler="resolve", allow_abbrev=False)
+    parser.add_argument("--generate_config", action="store_true", help="generate config")
+    parser.add_argument("--debug", action="store_true", help="debug")
+    parser.add_argument("-C", "--config", default="", dest="cfile", help="config file path")
+    parser.add_argument("-c", "--cmp", action="store_true", dest="cmp", help="compare file")
+    parser.add_argument("-d", "--down", action="store_true", dest="down", help="download files")
+    parser.add_argument("-h", "--host", default=[], dest="hosts", action="append", help="host alias")
+    parser.add_argument("files", nargs="*")
+    args = parser.parse_args()
 
-    if options.debug:
+    if args.debug:
         logging.basicConfig(level=logging.DEBUG,
                             format="%(funcName)s: %(message)s")
 
-    if options.generate_config:
-        generate_config(options.cfile)
+    if args.generate_config:
+        generate_config(args.cfile)
         sys.exit(0)
 
-    config, hosts = read_config(options.cfile, options.host)
-    if options.cmp or options.down:
+    config, hosts = read_config(args.cfile, args.hosts)
+    if args.cmp or args.down:
         assert len(hosts) == 1
 
-    if options.cmp:
-        do_compare(config, host[0], args)
+    if args.cmp:
+        do_compare(config, hosts[0], args.files)
     else:
-        do_sync(config, hosts, args, not options.down)
+        do_sync(config, hosts, args.files, not args.down)
 
     sys.exit(0)
