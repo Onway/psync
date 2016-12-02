@@ -54,42 +54,24 @@ def do_down_sync(config, host, files):
 
 
 def do_compare(config, host, files):
-    if len(files) == 0:
-        files.append(".")
-    assert len(files) == 1
+    assert len(files) == 1 and os.path.isfile(files[0])
     logging.debug(files)
 
     local_dir, remote_dir = get_config_dirs(host)
     local_file = join_local_paths(local_dir, files, False)[0]
     remote_file = local_file.replace(local_dir, remote_dir)
-    assert os.path.exists(local_file)
-
-    if os.path.isfile(local_file):
-        ssh_cmd = "cat %s" % remote_file
-    else:
-        ssh_cmd = "ls -1 %s" % remote_file
 
     host_name, host_args = make_host_args(host, cmd_type="ssh")
     cmd_args = [ "ssh" ] + host_args
     cmd_args.append(host_name)
-    cmd_args.append(ssh_cmd)
+    cmd_args.append("cat %s" % remote_file)
 
-    remote_output = tempfile.NamedTemporaryFile("w+t")
-    run_shell_cmd(cmd_args, stdout=remote_output)
+    with tempfile.NamedTemporaryFile("w+t") as remote_output:
+        run_shell_cmd(cmd_args, stdout=remote_output)
 
-    local_output = None
-    if os.path.isdir(local_file):
-        local_output = tempfile.NamedTemporaryFile("w+t")
-        run_shell_cmd(["ls", "-1", local_file], stdout=local_output.file)
-        local_file = local_output.name
-
-    diff_cmd = config.get("diff_cmd", "diff").split()
-    diff_args = diff_cmd + [local_file, remote_output.name]
-    run_shell_cmd(diff_args)
-
-    if local_output:
-        local_output.close()
-    remote_output.close()
+        diff_cmd = config.get("diff_cmd", "diff").split()
+        diff_args = diff_cmd + [local_file, remote_output.name]
+        run_shell_cmd(diff_args)
 
 
 def generate_config(file_path):
