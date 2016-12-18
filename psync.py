@@ -80,7 +80,13 @@ def generate_config(file_path):
         print("%s already exist!" % config_file)
         return
 
-    txt = """hosts = {
+    txt = """# Configuration file for psync.
+
+# The key of the `hosts` is a host alias used by -h option.
+# `ssh_name` is a hostname that matches one of the patterns given after the `Host` keyword in `ssh_config` file.
+# `ssh_key` specify the identity_file for ssh.
+# `paths` specify directory mapping between local and remote host.
+hosts = {
     'localhost': {
         'ssh_name': 'localhost',
         'host': '',
@@ -96,10 +102,13 @@ def generate_config(file_path):
     },
 }
 
+# Without -h option, use this for default.
 default_host = 'localhost'
 
+# Options given to `rsync` command.
 rsync_args = '-avzC'
 
+# Use this diff command when -c spcified.
 diff_cmd = 'vimdiff'
 """
 
