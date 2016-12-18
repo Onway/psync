@@ -153,6 +153,11 @@ def get_config_dirs(host):
 
 
 def make_host_args(host_config, cmd_type="rsync"):
+    """Make up command arguments for rsync or ssh.
+
+    Returns:
+        (hostname, [arguments]) 
+    """
     ssh_name = host_config.get("ssh_name", "")
     if ssh_name != "":
         args = (ssh_name, [])
@@ -175,6 +180,16 @@ def make_host_args(host_config, cmd_type="rsync"):
         
 
 def join_local_paths(local_dir, files, extend_root=True):
+    """Return the local absolute paths of `files`.
+
+    Args:
+        local_dir: file's path must starts with this directory.
+        files: list of files or directories.
+        extend_root: return the sub entries when a file is `local_dir`.
+
+    Returns:
+        A list of local absolute paths
+    """
     cwd = os.getcwd()
     dir_ = os.path.abspath(local_dir)
 
@@ -192,6 +207,16 @@ def join_local_paths(local_dir, files, extend_root=True):
 
 
 def group_dir_files(local_paths, local_dir, remote_dir, is_up=True):
+    """Group the source paths by their destination directory.
+
+    Args:
+        local_paths: local paths of files or directories to sync.
+        is_up: is upload files. The source and destination may exchange
+            according to this parameter.
+
+    Returns:
+        A dict likes { 'dest_dir': '[src_paths_list]' }.
+    """
     ldir = os.path.abspath(local_dir)
     rdir = os.path.abspath(remote_dir)
 
