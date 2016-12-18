@@ -221,12 +221,12 @@ def run_shell_cmd(cmd_args, stdout=sys.stdout, stderr=sys.stderr):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(conflict_handler="resolve", allow_abbrev=False)
-    parser.add_argument("--generate_config", action="store_true", help="generate config")
-    parser.add_argument("--debug", action="store_true", help="debug")
-    parser.add_argument("-C", "--config", default="", dest="cfile", help="config file path")
+    parser.add_argument("--generate_config", action="store_true", help="generate config file")
+    parser.add_argument("--debug", action="store_true", help="try operation but sync nothing")
+    parser.add_argument("-C", "--config", default="", dest="cfile", help="specify config file path")
     parser.add_argument("-c", "--cmp", action="store_true", dest="cmp", help="compare file")
     parser.add_argument("-d", "--down", action="store_true", dest="down", help="download files")
-    parser.add_argument("-h", "--host", default=[], dest="hosts", action="append", help="host alias")
+    parser.add_argument("-h", "--host", default=[], dest="hosts", action="append", help="host alias from config file")
     parser.add_argument("files", nargs="*")
     args = parser.parse_args()
 
