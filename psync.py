@@ -254,7 +254,7 @@ def run_shell_cmd(cmd_args, stdout=sys.stdout, stderr=sys.stderr):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(conflict_handler="resolve", allow_abbrev=False)
+    parser = argparse.ArgumentParser(conflict_handler="resolve")
     parser.add_argument("--generate_config", action="store_true", help="generate config file")
     parser.add_argument("--debug", action="store_true", help="try operation but sync nothing")
     parser.add_argument("-C", "--config", default="", dest="cfile", help="specify config file path")
