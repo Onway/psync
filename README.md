@@ -1,5 +1,8 @@
 # psync.py
-A script based on rsync for synchronizing code files written in python.
+A script based on rsync for synchronizing files written in python.
+
+## Install
+`pip install psyncf`
 
 ## Usage
 1. Generate the default configuration file:
