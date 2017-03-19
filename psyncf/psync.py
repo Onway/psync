@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 """A script based on rsync for synchronizing files"""
 
@@ -253,7 +253,7 @@ def run_shell_cmd(cmd_args, stdout=sys.stdout, stderr=sys.stderr):
         sys.exit(exit_code)
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(conflict_handler="resolve")
     parser.add_argument("--generate_config", action="store_true", help="generate config file")
     parser.add_argument("--debug", action="store_true", help="try operation but sync nothing")
@@ -282,3 +282,7 @@ if __name__ == "__main__":
         do_sync(config, hosts, args.files, not args.down)
 
     sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
